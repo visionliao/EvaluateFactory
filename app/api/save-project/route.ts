@@ -1,11 +1,41 @@
 import { NextResponse } from "next/server"
-import { writeFile, mkdir, copyFile, readdir, rm, access, rename } from "fs/promises"
+import { writeFile, mkdir, copyFile, readdir, rm, access, rename, readFile } from "fs/promises"
 import { join } from "path"
+
+export async function GET() {
+  try {
+    const projectFilePath = join(process.cwd(), "output", "project", "project.md")
+
+    try {
+      await access(projectFilePath)
+    } catch (error) {
+      return NextResponse.json({
+        projectFile: null,
+        exists: false
+      })
+    }
+
+    const projectContent = await readFile(projectFilePath, 'utf-8')
+
+    return NextResponse.json({
+      projectFile: "output/project/project.md",
+      content: projectContent,
+      exists: true
+    })
+
+  } catch (error) {
+    console.error("Error reading project file:", error)
+    return NextResponse.json(
+      { error: "读取项目文件时发生错误" },
+      { status: 500 }
+    )
+  }
+}
 
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const { systemPrompt, knowledgeBaseFiles } = body
+    const { systemPrompt, knowledgeBaseFiles, workModel, workModelParams } = body
 
     // 创建项目输出目录
     const projectDir = join(process.cwd(), "output", "project")
@@ -97,6 +127,14 @@ ${systemPrompt}
 ## 知识库文件
 ${knowledgeBaseFiles.length > 0 ? knowledgeBaseFiles.map((file: string) => `- ${file}`).join('\n') : '无'}
 
+## 工作模型配置
+### 工作模型
+${workModel || '未设置'}
+
+### 工作模型参数
+${workModelParams ? `\`\`\`json
+${JSON.stringify(workModelParams, null, 2)}
+\`\`\`` : '未设置'}
 
 ## 文件生成时间
 ${new Date().toLocaleString('zh-CN')}

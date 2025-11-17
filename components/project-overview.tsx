@@ -81,13 +81,13 @@ export function ProjectOverview() {
       parseError,
       isLoading,
       isEditMode,
-      showSuccess
+      showSuccess,
+      workModel,
+      workModelParams
     },
     modelSettingsConfig: {
       models,
-      providers,
-      workModel,
-      workModelParams
+      providers
     },
     setSystemPrompt,
     setKnowledgeBaseFiles,
@@ -103,8 +103,95 @@ export function ProjectOverview() {
     setWorkModelParams
   } = useAppStore()
 
-  // 动态获取模型配置
+  // 加载项目配置和模型配置
   useEffect(() => {
+    const loadProjectConfig = async () => {
+      try {
+        // 读取project.md文件
+        const response = await fetch('/api/save-project')
+
+        if (response.ok) {
+          const data = await response.json()
+          if (data.exists && data.content) {
+            // 解析project.md内容
+            const lines = data.content.split('\n')
+            let currentSection = ""
+            let jsonContent = ""
+            let inJsonBlock = false
+
+            const config = {
+              systemPrompt: "",
+              workModel: "",
+              workModelParams: null
+            }
+
+            for (let i = 0; i < lines.length; i++) {
+              const line = lines[i]
+
+              if (line.startsWith('## ')) {
+                currentSection = line.substring(3).trim()
+                inJsonBlock = false
+                continue
+              }
+
+              if (line.startsWith('```')) {
+                if (inJsonBlock) {
+                  try {
+                    if (currentSection === "工作模型参数" && jsonContent.trim()) {
+                      config.workModelParams = JSON.parse(jsonContent.trim())
+                    }
+                  } catch (error) {
+                    console.error("Error parsing JSON content:", error)
+                  }
+                  jsonContent = ""
+                  inJsonBlock = false
+                } else {
+                  inJsonBlock = true
+                  jsonContent = ""
+                }
+                continue
+              }
+
+              if (inJsonBlock) {
+                jsonContent += line + '\n'
+                continue
+              }
+
+              if (currentSection === "系统提示词") {
+                if (line.trim() && !line.startsWith('#')) {
+                  config.systemPrompt += line + '\n'
+                }
+              } else if (currentSection === "工作模型配置") {
+                if (line.includes('### 工作模型') && !line.includes('### 工作模型参数')) {
+                  const nextLine = lines[i + 1]
+                  if (nextLine && nextLine.trim() && nextLine.trim() !== '未设置') {
+                    config.workModel = nextLine.trim()
+                  }
+                }
+              }
+            }
+
+            config.systemPrompt = config.systemPrompt.trim()
+
+            // 设置到store中
+            if (config.systemPrompt) {
+              setSystemPrompt(config.systemPrompt)
+            }
+            if (config.workModel) {
+              setWorkModel(config.workModel)
+            }
+            if (config.workModelParams) {
+              setWorkModelParams(config.workModelParams)
+            }
+
+            console.log('Project config loaded from file:', config)
+          }
+        }
+      } catch (error) {
+        console.error('Error loading project config:', error)
+      }
+    }
+
     const loadModels = async () => {
       try {
         const response = await fetch('/api/models')
@@ -133,28 +220,48 @@ export function ProjectOverview() {
         // 只在没有设置工作模型时才设置默认值
         const isValidModel = (modelName: string) => allModels.some((model: any) => model.name === modelName)
 
-        // 检查是否需要设置默认模型
+        // 检查是否需要设置默认模型（只有在没有持久化数据或者数据无效时才设置）
         const shouldSetDefaults = !workModel || !isValidModel(workModel)
-  
+
         if (shouldSetDefaults) {
           console.log('Setting default work model:', defaultModels.workModel)
-  
+
           // 强制设置默认值
           const workModelToSet = isValidModel(defaultModels.workModel) ? defaultModels.workModel : allModels[0]?.name || ''
           setWorkModel(workModelToSet)
+
+          // 同时设置默认的工作模型参数
+          if (!workModelParams) {
+            setWorkModelParams({
+              streamingEnabled: true,
+              temperature: [1.0],
+              topP: [1.0],
+              presencePenalty: [0.0],
+              frequencyPenalty: [0.0],
+              singleResponseLimit: false,
+              maxTokens: [0],
+              maxTokensInput: "0",
+              intelligentAdjustment: false,
+              reasoningEffort: "中"
+            })
+          }
         }
       } catch (error) {
         console.error('Error loading model configurations:', error)
       }
     }
 
-9   // 首次加载或模型列表为空时，都重新加载
-    const shouldLoad = !models || models.length === 0 || !workModel
-    if (shouldLoad) {
-      console.log('Loading model configurations...')
-      loadModels()
+  // 并行加载项目配置和模型配置
+    const shouldLoadModels = !models || models.length === 0
+    if (shouldLoadModels) {
+      console.log('Loading project and model configurations...')
+      loadProjectConfig() // 先加载项目配置
+      loadModels()       // 再加载模型配置
+    } else {
+      // 即使模型已加载，也要确保项目配置已加载
+      loadProjectConfig()
     }
-  }, [models?.length, workModel])
+  }, [models?.length])
 
   // 获取模型提供商显示名称
   const getModelProvider = (modelName: string) => {
@@ -228,7 +335,9 @@ export function ProjectOverview() {
         body: JSON.stringify({
           systemPrompt: systemPrompt.trim(),
           knowledgeBaseFiles: knowledgeBaseFiles,
-          fileData: knowledgeBaseFileData
+          fileData: knowledgeBaseFileData,
+          workModel: workModel,
+          workModelParams: workModelParams
         }),
       })
 

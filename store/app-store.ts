@@ -66,14 +66,15 @@ interface AppState {
     isLoading: boolean
     isEditMode: boolean
     showSuccess: boolean
+    // 工作模型配置（从modelSettingsConfig移过来）
+    workModel: string
+    workModelParams: ModelParams
   }
 
   // 模型设置状态
   modelSettingsConfig: {
     models: ModelConfig[]
     providers: { [key: string]: ProviderConfig }
-    workModel: string
-    workModelParams: ModelParams
   }
 
   // 运行结果状态
@@ -166,15 +167,15 @@ export const useAppStore = create<AppState>()(
         parseError: "",
         isLoading: false,
         isEditMode: true,
-        showSuccess: false
+        showSuccess: false,
+        workModel: "",
+        workModelParams: { ...defaultModelParams }
       },
 
       // 模型设置默认值
       modelSettingsConfig: {
         models: [],
-        providers: {},
-        workModel: "",
-        workModelParams: { ...defaultModelParams }
+        providers: {}
       },
 
       // 运行结果默认值
@@ -244,10 +245,10 @@ export const useAppStore = create<AppState>()(
         get().updateModelSettingsConfig({ providers }),
 
       setWorkModel: (model) =>
-        get().updateModelSettingsConfig({ workModel: model }),
+        get().updateProjectConfig({ workModel: model }),
 
       setWorkModelParams: (params) =>
-        get().updateModelSettingsConfig({ workModelParams: params }),
+        get().updateProjectConfig({ workModelParams: params }),
 
       // Run Results Actions
       updateRunResultsConfig: (config) => 
@@ -329,10 +330,8 @@ export const useAppStore = create<AppState>()(
         projectConfig: {
           systemPrompt: state.projectConfig.systemPrompt,
           knowledgeBaseFiles: state.projectConfig.knowledgeBaseFiles,
-        },
-        modelSettingsConfig: {
-          workModel: state.modelSettingsConfig.workModel,
-          workModelParams: state.modelSettingsConfig.workModelParams,
+          workModel: state.projectConfig.workModel,
+          workModelParams: state.projectConfig.workModelParams,
         },
         runResultsConfig: {
           testLoopCount: state.runResultsConfig.testLoopCount,

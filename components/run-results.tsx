@@ -122,7 +122,7 @@ export function RunResults() {
   // 验证运行条件
   const validateRunConditions = () => {
     const errors = []
-    if (!modelSettingsConfig.workModel) errors.push("请选择工作模型")
+    if (!projectConfig.workModel) errors.push("请选择工作模型")
     if (!modelSettingsConfig.scoreModel) errors.push("请选择评分模型")
     if (testCasesCount === 0) errors.push("请配置测试题集")
     return errors
@@ -193,10 +193,10 @@ export function RunResults() {
       project: projectConfig,
       // 确保转换为数组
       models: {
-        work: modelSettingsConfig.workModel,
+        work: projectConfig.workModel,
         score: modelSettingsConfig.scoreModel,
         // 包含模型参数
-        workParams: modelSettingsConfig.workModelParams,
+        workParams: projectConfig.workModelParams,
         scoreParams: modelSettingsConfig.scoreModelParams
       },
       testCases: testCases, // 发送完整的测试用例数据
@@ -318,7 +318,7 @@ export function RunResults() {
             <div>
               <div className="font-medium text-foreground mb-1">模型配置</div>
               <div className="text-muted-foreground">
-                工作: {modelSettingsConfig.workModel || "未选择"}
+                工作: {projectConfig.workModel || "未选择"}
               </div>
               <div className="text-muted-foreground">
                 评分: {modelSettingsConfig.scoreModel || "未选择"}
@@ -441,7 +441,7 @@ export function RunResults() {
                           <HelpCircle size={14} /> Question #{currentRunState.questionId}
                         </div>
                         <span className="font-mono text-xs text-muted-foreground lowercase">
-                          {modelSettingsConfig.workModel}
+                          {projectConfig.workModel}
                         </span>
                       </div>
                       <p className="text-sm p-2 bg-green-50 rounded">{currentRunState.questionText}</p>
