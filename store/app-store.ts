@@ -81,7 +81,9 @@ interface AppState {
   runResultsConfig: {
     runStatus: RunStatus
     testLoopCount: number
-    totalTestScore: number
+    chunkQuestionCount: number
+    documentQuestionCount: number
+    comprehensiveQuestionCount: number
     // 用于跟踪进度的状态
     currentTask: number
     totalTasks: number
@@ -123,7 +125,9 @@ interface AppState {
   stopRun: () => void
   setRunError: (error: string) => void
   setTestLoopCount: (count: number) => void
-  setTotalTestScore: (score: number) => void
+  setChunkQuestionCount: (count: number) => void
+  setDocumentQuestionCount: (count: number) => void
+  setComprehensiveQuestionCount: (count: number) => void
   // 用于更新进度的 Actions
   setCurrentTask: (task: number) => void
   setTotalTasks: (tasks: number) => void
@@ -183,8 +187,10 @@ export const useAppStore = create<AppState>()(
         runStatus: {
           isRunning: false
         },
-        testLoopCount: 10,
-        totalTestScore: 0,
+        testLoopCount: 3,
+        chunkQuestionCount: 3,
+        documentQuestionCount: 5,
+        comprehensiveQuestionCount: 30,
         currentTask: 0,
         totalTasks: 0,
         progress: 0,
@@ -284,8 +290,14 @@ export const useAppStore = create<AppState>()(
       setTestLoopCount: (count) =>
         get().updateRunResultsConfig({ testLoopCount: count }),
 
-      setTotalTestScore: (score) =>
-        get().updateRunResultsConfig({ totalTestScore: score }),
+      setChunkQuestionCount: (count) =>
+        get().updateRunResultsConfig({ chunkQuestionCount: count }),
+
+      setDocumentQuestionCount: (count) =>
+        get().updateRunResultsConfig({ documentQuestionCount: count }),
+
+      setComprehensiveQuestionCount: (count) =>
+        get().updateRunResultsConfig({ comprehensiveQuestionCount: count }),
 
       // 添加新的 Actions 实现
       setCurrentTask: (task) =>
@@ -335,9 +347,43 @@ export const useAppStore = create<AppState>()(
         },
         runResultsConfig: {
           testLoopCount: state.runResultsConfig.testLoopCount,
-          totalTestScore: state.runResultsConfig.totalTestScore
+          chunkQuestionCount: state.runResultsConfig.chunkQuestionCount,
+          documentQuestionCount: state.runResultsConfig.documentQuestionCount,
+          comprehensiveQuestionCount: state.runResultsConfig.comprehensiveQuestionCount
         },
       }),
+      // 在重新水合状态时确保默认值正确应用
+      onRehydrateStorage: () => (state) => {
+        console.log('Rehydrating state with:', state);
+        if (state && state.runResultsConfig) {
+          // 强制设置正确的默认值，覆盖localStorage中的旧值
+          state.runResultsConfig.testLoopCount = 3;
+          state.runResultsConfig.chunkQuestionCount = 3;
+          state.runResultsConfig.documentQuestionCount = 5;
+          state.runResultsConfig.comprehensiveQuestionCount = 30;
+          console.log('Final state after rehydration:', state.runResultsConfig);
+        }
+      },
+      // 添加版本控制，确保默认值更新
+      version: 1,
+      // 迁移函数，处理版本升级时的默认值重置
+      migrate: (persistedState: any, version: number) => {
+        console.log('Migrating persisted state:', persistedState, 'version:', version);
+        if (version === 0) {
+          // 从版本 0 升级到版本 1，确保默认值正确
+          return {
+            ...persistedState,
+            runResultsConfig: {
+              ...persistedState?.runResultsConfig,
+              testLoopCount: 3,
+              chunkQuestionCount: 3,
+              documentQuestionCount: 5,
+              comprehensiveQuestionCount: 30
+            }
+          };
+        }
+        return persistedState;
+      },
     }
   )
 )

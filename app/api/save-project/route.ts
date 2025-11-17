@@ -139,9 +139,20 @@ ${knowledgeBaseFiles.length > 0 ? knowledgeBaseFiles.map((file: string) => `- ${
 ${workModel || '未设置'}
 
 ### 工作模型参数
-${workModelParams ? `\`\`\`json
-${JSON.stringify(workModelParams, null, 2)}
-\`\`\`` : '未设置'}
+\`\`\`json
+${workModelParams ? JSON.stringify(workModelParams, null, 2) : JSON.stringify({
+  streamingEnabled: true,
+  temperature: [1.0],
+  topP: [1.0],
+  presencePenalty: [0.0],
+  frequencyPenalty: [0.0],
+  singleResponseLimit: false,
+  maxTokens: [0],
+  maxTokensInput: "0",
+  intelligentAdjustment: false,
+  reasoningEffort: "中"
+}, null, 2)}
+\`\`\`
 
 ## 文件生成时间
 ${new Date().toLocaleString('zh-CN')}

@@ -8,11 +8,9 @@ import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { useAppStore } from "@/store/app-store"
 import { useState, useEffect, useRef } from "react"
-import { AlertTriangle, Cog, FileText, Bot, HelpCircle, Star } from "lucide-react"
+import { AlertTriangle, Cog, FileText, Bot, HelpCircle } from "lucide-react"
 
 export function RunResults() {
-  const [testCases, setTestCases] = useState<any[]>([])
-  const [testCasesCount, setTestCasesCount] = useState(0)
   const [showValidationDialog, setShowValidationDialog] = useState(false)
   const [validationMessage, setValidationMessage] = useState("")
   const [totalTokenUsage, setTotalTokenUsage] = useState(0)
@@ -41,7 +39,9 @@ export function RunResults() {
     runResultsConfig: {
       runStatus,
       testLoopCount,
-      totalTestScore,
+      chunkQuestionCount,
+      documentQuestionCount,
+      comprehensiveQuestionCount,
       // 进度状态
       currentTask,
       totalTasks,
@@ -59,7 +59,9 @@ export function RunResults() {
     setRunError,
     setActiveTaskMessage,
     setTestLoopCount,
-    setTotalTestScore,
+    setChunkQuestionCount,
+    setDocumentQuestionCount,
+    setComprehensiveQuestionCount,
     setCurrentTask,
     setTotalTasks,
     setProgress,
@@ -69,28 +71,7 @@ export function RunResults() {
     clearCurrentRunState
   } = useAppStore()
 
-  // 加载测试题集数据
-  useEffect(() => {
-    const loadTestCases = async () => {
-      try {
-        const response = await fetch("/api/test-cases")
-        if (response.ok) {
-          const data = await response.json()
-          setTestCases(data.checks) // 存储完整的测试用例
-          setTestCasesCount(data.checks.length)
-
-          // 计算总分
-          const totalScore = data.checks.reduce((sum: number, question: any) => sum + (question.score || 0), 0)
-          setTotalTestScore(totalScore)
-        }
-      } catch (error) {
-        console.error("Failed to load test cases:", error)
-      }
-    }
-
-    loadTestCases()
-  }, [setTotalTestScore])
-
+  
   // 组件挂载时检查是否已有任务在运行
   useEffect(() => {
     // 如果 store 显示正在执行，但本组件没有 controller，说明是重新挂载的情况
@@ -113,18 +94,14 @@ export function RunResults() {
 
   // 计算总任务数
   const calculateTotalTasks = () => {
-    // 基础任务 = (问答(Q) + 评分(Q)) * F
-    const baseTasks = testCasesCount * 2;
-
-    return baseTasks * testLoopCount;
+    // 总任务数 = 所有类型问题集的数量之和
+    return testLoopCount + chunkQuestionCount + documentQuestionCount + comprehensiveQuestionCount;
   }
 
   // 验证运行条件
   const validateRunConditions = () => {
     const errors = []
     if (!projectConfig.workModel) errors.push("请选择工作模型")
-    if (!modelSettingsConfig.scoreModel) errors.push("请选择评分模型")
-    if (testCasesCount === 0) errors.push("请配置测试题集")
     return errors
   }
 
@@ -194,14 +171,14 @@ export function RunResults() {
       // 确保转换为数组
       models: {
         work: projectConfig.workModel,
-        score: modelSettingsConfig.scoreModel,
         // 包含模型参数
-        workParams: projectConfig.workModelParams,
-        scoreParams: modelSettingsConfig.scoreModelParams
+        workParams: projectConfig.workModelParams
       },
-      testCases: testCases, // 发送完整的测试用例数据
       testConfig: {
-        loopCount: testLoopCount,
+        qaCount: testLoopCount,
+        chunkCount: chunkQuestionCount,
+        documentCount: documentQuestionCount,
+        comprehensiveCount: comprehensiveQuestionCount,
       },
     };
 
@@ -318,20 +295,7 @@ export function RunResults() {
             <div>
               <div className="font-medium text-foreground mb-1">模型配置</div>
               <div className="text-muted-foreground">
-                工作: {projectConfig.workModel || "未选择"}
-              </div>
-              <div className="text-muted-foreground">
-                评分: {modelSettingsConfig.scoreModel || "未选择"}
-              </div>
-            </div>
-
-            <div>
-              <div className="font-medium text-foreground mb-1">测试题集</div>
-              <div className="text-muted-foreground">
-                测试题: {testCasesCount} 个
-              </div>
-              <div className="text-muted-foreground">
-                总分: {totalTestScore} 分
+                工作模型: {projectConfig.workModel || "未选择"}
               </div>
             </div>
           </div>
@@ -343,35 +307,100 @@ export function RunResults() {
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
               <div>
                 <div className="flex items-center gap-2">
-                  <Label className="text-sm font-medium text-foreground">测试循环次数</Label>
-                  <span className="text-xs text-muted-foreground">loop_count</span>
+                  <Label className="text-sm font-medium text-foreground">Q&A题集</Label>
+                  <span className="text-xs text-muted-foreground">qa_count</span>
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
-                  设置测试循环的次数，范围1-100次
+                  设置Q&A问题集生成数量
                 </p>
               </div>
               <div className="flex items-center gap-4">
                 <Slider
                   value={[testLoopCount]}
                   onValueChange={(value) => setTestLoopCount(value[0])}
+                  max={10}
+                  min={1}
+                  step={1}
+                  className="w-48 md:w-64"
+                />
+                <span className="text-sm font-medium text-foreground min-w-[2rem] text-center">
+                  {testLoopCount}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Label className="text-sm font-medium text-foreground">切块问题集</Label>
+                  <span className="text-xs text-muted-foreground">chunk_count</span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  设置切块问题集生成数量
+                </p>
+              </div>
+              <div className="flex items-center gap-4">
+                <Slider
+                  value={[chunkQuestionCount]}
+                  onValueChange={(value) => setChunkQuestionCount(value[0])}
+                  max={10}
+                  min={1}
+                  step={1}
+                  className="w-48 md:w-64"
+                />
+                <span className="text-sm font-medium text-foreground min-w-[2rem] text-center">
+                  {chunkQuestionCount}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Label className="text-sm font-medium text-foreground">文档问题集</Label>
+                  <span className="text-xs text-muted-foreground">doc_count</span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  设置文档问题集生成数量
+                </p>
+              </div>
+              <div className="flex items-center gap-4">
+                <Slider
+                  value={[documentQuestionCount]}
+                  onValueChange={(value) => setDocumentQuestionCount(value[0])}
+                  max={20}
+                  min={1}
+                  step={1}
+                  className="w-48 md:w-64"
+                />
+                <span className="text-sm font-medium text-foreground min-w-[2rem] text-center">
+                  {documentQuestionCount}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Label className="text-sm font-medium text-foreground">综合问题集</Label>
+                  <span className="text-xs text-muted-foreground">comprehensive_count</span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  设置综合问题集生成数量
+                </p>
+              </div>
+              <div className="flex items-center gap-4">
+                <Slider
+                  value={[comprehensiveQuestionCount]}
+                  onValueChange={(value) => setComprehensiveQuestionCount(value[0])}
                   max={100}
                   min={1}
                   step={1}
                   className="w-48 md:w-64"
                 />
-                <Input
-                  type="number"
-                  value={testLoopCount}
-                  onChange={(e) => {
-                    const value = parseInt(e.target.value)
-                    if (value >= 1 && value <= 100) {
-                      setTestLoopCount(value)
-                    }
-                  }}
-                  className="w-20 h-8 text-center text-sm"
-                  min={1}
-                  max={100}
-                />
+                <span className="text-sm font-medium text-foreground min-w-[3rem] text-center">
+                  {comprehensiveQuestionCount}
+                </span>
               </div>
             </div>
           </div>
@@ -461,19 +490,7 @@ export function RunResults() {
                   </div>
                 )}
 
-                {/* 2. 评分结果 (如果有) */}
-                {currentRunState.score !== undefined && (
-                  <div className="p-4 border rounded-md bg-purple-50 flex items-center justify-between animate-in fade-in zoom-in duration-300">
-                    <div className="flex items-center gap-2 font-semibold text-purple-700">
-                      <Star size={18} /> 当前评分 ({modelSettingsConfig.scoreModel})
-                    </div>
-                    <div className="flex items-baseline gap-1">
-                      <span className="font-bold text-2xl text-purple-800">{currentRunState.score}</span>
-                      <span className="text-sm text-muted-foreground">/ {currentRunState.maxScore}</span>
-                    </div>
-                  </div>
-                )}
-
+                
               </div>
             ) : (
               // 初始状态或运行结束且无状态时

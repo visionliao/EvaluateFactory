@@ -138,10 +138,26 @@ export function ProjectOverview() {
                 if (inJsonBlock) {
                   try {
                     if (currentSection === "工作模型参数" && jsonContent.trim()) {
-                      config.workModelParams = JSON.parse(jsonContent.trim())
+                      const parsedParams = JSON.parse(jsonContent.trim())
+                      config.workModelParams = parsedParams
                     }
                   } catch (error) {
                     console.error("Error parsing JSON content:", error)
+                    // If parsing fails, set default params
+                    if (currentSection === "工作模型参数") {
+                      config.workModelParams = {
+                        streamingEnabled: true,
+                        temperature: [1.0],
+                        topP: [1.0],
+                        presencePenalty: [0.0],
+                        frequencyPenalty: [0.0],
+                        singleResponseLimit: false,
+                        maxTokens: [0],
+                        maxTokensInput: "0",
+                        intelligentAdjustment: false,
+                        reasoningEffort: "中"
+                      }
+                    }
                   }
                   jsonContent = ""
                   inJsonBlock = false
@@ -163,7 +179,12 @@ export function ProjectOverview() {
                 }
               } else if (currentSection === "工作模型配置") {
                 if (line.includes('### 工作模型') && !line.includes('### 工作模型参数')) {
-                  const nextLine = lines[i + 1]
+                  // Look for the next non-empty line that contains the model name
+                  let nextLineIndex = i + 1
+                  while (nextLineIndex < lines.length && !lines[nextLineIndex].trim()) {
+                    nextLineIndex++
+                  }
+                  const nextLine = lines[nextLineIndex]
                   if (nextLine && nextLine.trim() && nextLine.trim() !== '未设置') {
                     config.workModel = nextLine.trim()
                   }
@@ -568,8 +589,8 @@ export function ProjectOverview() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <div>
-                <h2 className="text-lg font-medium text-foreground">知识库</h2>
-                <p className="text-sm text-muted-foreground">选择文件或文件夹作为知识库</p>
+                <h2 className="text-lg font-medium text-foreground">知识库元数据</h2>
+                <p className="text-sm text-muted-foreground">选择文件或文件夹作为生成测试题集的依据</p>
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -650,7 +671,7 @@ export function ProjectOverview() {
             <div className="flex items-center gap-2">
               <h2 className="text-lg font-medium text-foreground">工作模型配置</h2>
             </div>
-            <p className="text-sm text-muted-foreground">选择用于执行任务的大模型</p>
+            <p className="text-sm text-muted-foreground">选择用于生成测试集的大模型</p>
           </div>
 
           <div className="space-y-2">
