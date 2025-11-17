@@ -683,7 +683,18 @@ export function ProjectOverview() {
 
           {/* 工作模型参数设置 */}
           <ModelParams
-            config={workModelParams}
+            config={workModelParams || {
+              streamingEnabled: true,
+              temperature: [1.0],
+              topP: [1.0],
+              presencePenalty: [0.0],
+              frequencyPenalty: [0.0],
+              singleResponseLimit: false,
+              maxTokens: [0],
+              maxTokensInput: "0",
+              intelligentAdjustment: false,
+              reasoningEffort: "中"
+            }}
             onChange={setWorkModelParams}
             title="工作模型参数设置"
             defaultExpanded={false}

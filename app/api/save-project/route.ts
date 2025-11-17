@@ -41,14 +41,21 @@ export async function POST(request: Request) {
     const projectDir = join(process.cwd(), "output", "project")
     const knowledgeDir = join(projectDir, "knowledge")
 
-    try {
-      await rm(projectDir, { recursive: true, force: true })
-    } catch (error) {
-      // 目录不存在，可以继续创建
-    }
-
     // 创建项目目录
     await mkdir(projectDir, { recursive: true })
+
+    // 根据用户选择的文件列表处理knowledge目录
+    if (knowledgeBaseFiles.length === 0) {
+      // 用户清空了文件，删除knowledge目录
+      try {
+        await rm(knowledgeDir, { recursive: true, force: true })
+        console.log('用户清空了文件，删除knowledge目录')
+      } catch (error) {
+        // 目录不存在，忽略错误
+      }
+    }
+
+    // 创建knowledge目录（如果用户有文件或目录不存在）
     await mkdir(knowledgeDir, { recursive: true })
 
     // 复制知识库文件
