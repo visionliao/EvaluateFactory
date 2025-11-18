@@ -160,136 +160,194 @@ export async function POST(request: NextRequest) {
   })
 }
 
+/**
+ * 加载并缓存所有知识库内容
+ */
+async function classifyAndCacheKnowledgeContent(onProgress: (data: object) => void) {
+  const knowledgeDir = join(process.cwd(), "output", "project", "knowledge");
+  onProgress({ type: 'log', message: `开始扫描知识库目录: ${knowledgeDir}` });
+
+  // 定义缓存数组
+  const qaPairs: string[] = [];
+  const chunks: string[] = [];
+  const documents: { name: string, content: string }[] = [];
+
+  try {
+    const knowledgeFiles = await readdir(knowledgeDir);
+    onProgress({ type: 'log', message: `发现 ${knowledgeFiles.length} 个文件，正在进行智能分类...` });
+
+    // 正则表达式，用于精确识别 Q&A 格式
+    const qaRegex = /(^Q:.*\s*\n^A:.*)/gm;
+
+    for (const fileName of knowledgeFiles) {
+      const content = await readFile(join(knowledgeDir, fileName), 'utf-8');
+      const matches = content.match(qaRegex);
+
+      // 规则: 超过5个Q&A对，则判定为QA文件
+      if (matches && matches.length > 5) {
+        onProgress({ type: 'log', message: `文件 "${fileName}" 被分类为 [QA类型]` });
+        // 按空行分割，并过滤掉无效的空块
+        const pairs = content.split(/\n\s*\n/).filter(p => p.trim());
+        qaPairs.push(...pairs);
+      } else {
+        onProgress({ type: 'log', message: `文件 "${fileName}" 被分类为 [文档类型]` });
+        // 1. 缓存完整文档内容
+        documents.push({ name: fileName, content: content });
+        // 2. 缓存按空行分割的文本块
+        const contentChunks = content.split(/\n\s*\n/).filter(c => c.trim());
+        chunks.push(...contentChunks);
+      }
+    }
+  } catch (e: any) {
+    // 如果目录不存在，这是一个严重错误，因为无法进行任何操作
+    throw new Error(`无法读取知识库目录: ${knowledgeDir}。请确认文件已上传。错误: ${e.message}`);
+  }
+
+  onProgress({ type: 'log', message: `内容缓存完成: QA对(${qaPairs.length}), 文本块(${chunks.length}), 文档(${documents.length})` });
+
+  return { qaPairs, chunks, documents };
+}
+
 // 主任务执行器
 async function runTask(config: any, baseResultDir: string, onProgress: (data: object) => void, isCancelled: () => boolean = () => false) {
-  // 总任务数计算公式 - 只计算工作模型调用
-  const totalTasks = config.testCases.length * config.testConfig.loopCount;
+  // 总任务数计算
+  const { qaPairs, chunks, documents } = await classifyAndCacheKnowledgeContent(onProgress);
+  const { qaCount, chunkCount, documentCount, comprehensiveCount } = config.testConfig;
+  const qaTaskTotal = qaPairs.length * qaCount;
+  const chunkTaskTotal = chunks.length * chunkCount;
+  const documentTaskTotal = documents.length * documentCount;
+  const comprehensiveTaskTotal = comprehensiveCount;
+
+  let totalTasks = qaTaskTotal + chunkTaskTotal + documentTaskTotal + comprehensiveTaskTotal;
+  if (totalTasks === 0) {
+    throw new Error("总任务数为0。请检查知识库文件或在运行界面设置生成数量。");
+  }
+  onProgress({ type: 'log', message: `任务总数计算完成: ${totalTasks} (QA:${qaTaskTotal}, 切块:${chunkTaskTotal}, 文档:${documentTaskTotal}, 综合:${comprehensiveTaskTotal})` });
+  console.log(`任务总数: ${totalTasks} (QA:${qaTaskTotal}, 切块:${chunkTaskTotal}, 文档:${documentTaskTotal}, 综合:${comprehensiveTaskTotal})`);
+
   let currentTask = 0;
   let totalTokenUsage = 0; // 累计token消耗
+  const allResults: any[] = [];
 
-  // 步骤 1: 整合项目背景信息
-  onProgress({ type: 'log', message: `正在加载项目背景资料...` })
-
-  // 创建基础项目上下文
-  let baseProjectContext = `# QA系统提示词\n${config.project.qaSystemPrompt || ''}\n\n`
-
-  // 如果有其他类型的系统提示词，也添加到上下文中
-  if (config.project.chunkSystemPrompt) {
-    baseProjectContext += `# 文本块系统提示词\n${config.project.chunkSystemPrompt}\n\n`
-  }
-  if (config.project.documentSystemPrompt) {
-    baseProjectContext += `# 文档系统提示词\n${config.project.documentSystemPrompt}\n\n`
-  }
-  if (config.project.comprehensiveSystemPrompt) {
-    baseProjectContext += `# 综合系统提示词\n${config.project.comprehensiveSystemPrompt}\n\n`
-  }
-  // const knowledgeDir = join(process.cwd(), "output", "project", "knowledge")
-  // try {
-  //   const knowledgeFiles = await readdir(knowledgeDir)
-  //   for (const fileName of knowledgeFiles) {
-  //     const content = await readFile(join(knowledgeDir, fileName), 'utf-8')
-  //     baseProjectContext += `## 知识库文件: ${fileName}\n${content}\n\n`
-  //     console.error(`读取知识库文件 ${fileName} 成功， 上下文长度: ${baseProjectContext.length}`);
-  //   }
-  // } catch (e) {
-  //     onProgress({ type: 'log', message: `警告: 未找到或无法读取知识库目录: ${knowledgeDir}` })
-  // }
-
-  // 创建用于工作模型的上下文
-  const workContext = baseProjectContext
-  console.error(`工作模型上下文创建完成，长度: ${workContext.length}`);
-
-  // 步骤 7: 外层循环
-  for (let loop = 1; loop <= config.testConfig.loopCount; loop++) {
-    // 检查是否已取消
-    if (isCancelled()) {
-      throw new Error('任务已被用户取消');
+  const executeGenerationTask = async (
+    taskType: 'QA' | 'Chunk' | 'Document' | 'Comprehensive',
+    systemPrompt: string,
+    contentArray: any[], // Can be string[] or {name, content}[]
+    userCount: number
+  ) => {
+    // 如果系统提示词为空，直接跳过此类任务
+    if (!systemPrompt.trim()) {
+        onProgress({ type: 'log', message: `警告: [${taskType}] 的系统提示词为空，已跳过该类别的所有 ${contentArray.length * userCount} 个任务。` });
+        currentTask += contentArray.length * userCount; // 依然要推进任务计数，以保证进度条正确
+        // 通知前端更新进度
+        onProgress({ type: 'update', payload: {
+          activeTaskMessage: `跳过 [${taskType}] 任务 (系统提示词为空)`,
+          progress: (currentTask / totalTasks) * 100,
+          currentTask: currentTask,
+          totalTasks: totalTasks
+        } });
+        return;
     }
+    if (userCount === 0 || contentArray.length === 0) return;
+    onProgress({ type: 'log', message: `--- 开始执行 [${taskType}] 任务 ---` });
 
-    const loopDir = join(baseResultDir, loop.toString())
-    await mkdir(loopDir, { recursive: true })
+    for (let loop = 1; loop <= userCount; loop++) {
+      if (isCancelled()) return;
+      onProgress({ type: 'log', message: `[${taskType}] 第 ${loop}/${userCount} 轮...` });
 
-    // 创建日志输出文件
-    const logPath = join(loopDir, 'log.txt');
-    await ensureLogFileExists(logPath);
+      const loopDir = join(baseResultDir, loop.toString());
+      await mkdir(loopDir, { recursive: true });
+      const logPath = join(loopDir, 'log.txt');
+      await ensureLogFileExists(logPath);
 
-    // 为工作模型创建一个包含所有背景知识的系统提示词
-    const finalSystemPrompt = `
-      ${workContext}
-    `;
-    let qaResults: any[] = [];
-    for (const testCase of config.testCases) {
-      // 步骤 3: 工作模型回答问题
-      let modelAnswer = "N/A (调用失败)";
-      let workTokenUsage = 0; // 工作模型token消耗
-      let workDurationUsage = 0; // 工作模型耗时
-      currentTask++;
-      onProgress({ type: 'update', payload: { activeTaskMessage: `正在回答问题 ${testCase.id}...`, progress: (currentTask / totalTasks) * 100, currentTask: currentTask } })
+      for (let i = 0; i < contentArray.length; i++) {
+        if (isCancelled()) return;
 
-      const workModelConfig = config.models.workParams || {};
-      
-      const workOptions: LlmGenerationOptions = {
-        stream: workModelConfig.streamingEnabled || false, // 使用用户配置的流式设置
-        timeoutMs: 90000,
-        maxOutputTokens: workModelConfig.maxTokens?.[0] || 8192,
-        temperature: workModelConfig.temperature?.[0] || 1.0,
-        topP: workModelConfig.topP?.[0] || 1.0,
-        presencePenalty: workModelConfig.presencePenalty?.[0] || 0.0,
-        frequencyPenalty: workModelConfig.frequencyPenalty?.[0] || 0.0, // 词汇丰富度,默认0，范围-2.0-2.0,值越大，用词越丰富多样；值越低，用词更朴实简单
-        systemPrompt: finalSystemPrompt, // 系统提示词
-        logPath: logPath,  // 传递日志输出路径
-      };
-      const workMessages: ChatMessage[] = [
-        {
-          role: 'user',
-          content: testCase.question,
+        currentTask++;
+        let sourceIdentifier = `${taskType}-${loop}-${i+1}`;
+        // 构造用户指令和上下文
+        let userMessage = '';
+        switch (taskType) {
+          case 'QA':
+            userMessage = contentArray[i];
+            break;
+          case 'Chunk':
+            userMessage = contentArray[i];
+            break;
+          case 'Document':
+            sourceIdentifier = contentArray[i].name;
+            userMessage = contentArray[i].content;
+            break;
+          case 'Comprehensive':
+            // 综合任务的上下文是所有文档的拼接
+            let comprehensiveContext = documents.map(d => `文件名: ${d.name}\n${d.content}`).join('\n\n---\n\n');
+            userMessage = comprehensiveContext;
+            break;
         }
-      ];
-      // console.log(`工作模型: ${config.models.work}`);
 
-      // 检查是否已取消
-      if (isCancelled()) {
-        throw new Error('任务已被用户取消');
+        const finalUserMessage = userMessage;
+
+        onProgress({ type: 'update', payload: { activeTaskMessage: `[${taskType}] ${i + 1}/${contentArray.length} (第${loop}轮)`, progress: (currentTask / totalTasks) * 100, currentTask: currentTask, totalTasks: totalTasks } });
+
+        const workModelConfig = config.project.workModelParams || {};
+        const workOptions: LlmGenerationOptions = {
+          stream: workModelConfig.streamingEnabled || false, // 使用用户配置的流式设置
+          timeoutMs: 90000,
+          maxOutputTokens: workModelConfig.maxTokens?.[0] || 8192,
+          temperature: workModelConfig.temperature?.[0] || 1.0,
+          topP: workModelConfig.topP?.[0] || 1.0,
+          presencePenalty: workModelConfig.presencePenalty?.[0] || 0.0,
+          frequencyPenalty: workModelConfig.frequencyPenalty?.[0] || 0.0, // 词汇丰富度,默认0，范围-2.0-2.0,值越大，用词越丰富多样；值越低，用词更朴实简单
+          systemPrompt: systemPrompt, // 系统提示词
+          logPath: logPath,  // 传递日志输出路径
+        };
+
+        const workMessages: ChatMessage[] = [{ role: 'user', content: finalUserMessage }];
+        const workResult = await safeModelCall(config.project.workModel, workMessages, workOptions);
+        let workDurationUsage = workResult.durationUsage ? Math.round(workResult.durationUsage.total_duration / 1e6) : 0;
+
+        if (workResult.tokenUsage) {
+          totalTokenUsage += workResult.tokenUsage.total_tokens;
+          onProgress({ type: 'token_usage', tokenUsage: totalTokenUsage });
+        }
+
+        let generatedQuestion = "生成失败";
+        let generatedAnswer = workResult.error || "N/A";
+
+        if (workResult.success && workResult.content) {
+          try {
+            const jsonMatch = workResult.content.match(/```json\s*([\s\S]*?)\s*```/);
+            const jsonString = jsonMatch ? jsonMatch[1] : workResult.content;
+            const parsed = JSON.parse(jsonString);
+            generatedQuestion = parsed.question || "解析失败: 缺少question";
+            generatedAnswer = parsed.answer || "解析失败: 缺少answer";
+          } catch (e) {
+            generatedQuestion = "解析JSON失败";
+            generatedAnswer = workResult.content;
+          }
+        }
+
+        await appendToLogFile(logPath, `--- Model Answer ---\n${generatedAnswer}\n--- Stats ---\nToken Usage: ${workResult.tokenUsage?.total_tokens || 0} | Duration: ${workDurationUsage}ms\n\n`);
+        onProgress({ type: 'state_update', payload: { questionId: sourceIdentifier, questionText: generatedQuestion, modelAnswer: generatedAnswer } });
+
+        const resultEntry = {
+          id: currentTask,
+          taskType,
+          question: generatedQuestion,
+          answer: generatedAnswer,
+          score: 10
+        };
+        allResults.push(resultEntry);
+        await writeFile(join(baseResultDir, 'results.json'), JSON.stringify(allResults, null, 2), 'utf-8');
       }
-
-      // 将当前问题追加到logPath日志文件中
-      await appendToLogFile(logPath, `\n=== 问题 #${testCase.id} ===\n${testCase.question}\n\n`);
-
-      const workResult = await safeModelCall(config.models.work, workMessages, workOptions);
-
-      // 累加token使用量
-      if (workResult.tokenUsage) {
-        totalTokenUsage += workResult.tokenUsage.total_tokens;
-        onProgress({ type: 'token_usage', tokenUsage: totalTokenUsage });
-        workTokenUsage = workResult.tokenUsage.total_tokens; // 本次问答工作模型消耗token
-      }
-      if (workResult.durationUsage) { // 本次问答工作模型耗时
-        workDurationUsage = Math.round(workResult.durationUsage.total_duration / 1e6);
-      }
-
-      if (workResult.success) {
-        modelAnswer = workResult.content!;
-      } else {
-        onProgress({ type: 'log', message: `警告: 回答问题 #${testCase.id} 失败，已跳过评分。` });
-      }
-
-      // 将最终运行结果追加到logPath日志文件中
-      await appendToLogFile(logPath, `--- 最终答复 ---\n${modelAnswer}\n\n`);
-
-      onProgress({ type: 'state_update', payload: { questionId: testCase.id, questionText: testCase.question, modelAnswer } });
-
-      const resultEntry = {
-        id: testCase.id,
-        question: testCase.question,
-        standardAnswer: testCase.answer,
-        modelAnswer,
-        workTokenUsage: workTokenUsage,
-        workDurationUsage: workDurationUsage,
-        error: workResult.error
-      };
-      qaResults.push(resultEntry);
-      await writeFile(join(loopDir, 'results.json'), JSON.stringify(qaResults, null, 2), 'utf-8');
-      await new Promise(resolve => setTimeout(resolve, 1500));
     }
   }
+  await executeGenerationTask('QA', config.project.qaSystemPrompt, qaPairs, qaCount);
+  if (isCancelled()) return;
+  await executeGenerationTask('Chunk', config.project.chunkSystemPrompt, chunks, chunkCount);
+  if (isCancelled()) return;
+  await executeGenerationTask('Document', config.project.documentSystemPrompt, documents, documentCount);
+  if (isCancelled()) return;
+  const comprehensiveDummyContent = Array(comprehensiveCount).fill("N/A");
+  await executeGenerationTask('Comprehensive', config.project.comprehensiveSystemPrompt, comprehensiveDummyContent, 1);
 }

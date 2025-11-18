@@ -89,12 +89,6 @@ export function RunResults() {
     };
   }, []);
 
-  // 计算总任务数
-  const calculateTotalTasks = () => {
-    // 总任务数 = 所有类型问题集的数量之和
-    return qaQuestionCount + chunkQuestionCount + documentQuestionCount + comprehensiveQuestionCount;
-  }
-
   // 验证运行条件
   const validateRunConditions = () => {
     const errors = []
@@ -140,10 +134,10 @@ export function RunResults() {
     setIsExecuting(true);
     startRun();
     clearCurrentRunState(); // 清空上次的覆盖显示内容
-    setActiveTaskMessage("任务初始化...");
+    setActiveTaskMessage("正在分析知识库文件并计算任务...");
 
-    const calculatedTotalTasks = calculateTotalTasks();
-    setTotalTasks(calculatedTotalTasks);
+    // 重置任务计数，等待后端计算实际的totalTasks
+    setTotalTasks(0);
     setCurrentTask(0);
     setProgress(0);
 
@@ -227,6 +221,7 @@ export function RunResults() {
                 if (data.payload.activeTaskMessage) setActiveTaskMessage(data.payload.activeTaskMessage);
                 if (data.payload.progress !== undefined) setProgress(data.payload.progress);
                 if (data.payload.currentTask !== undefined) setCurrentTask(data.payload.currentTask);
+                if (data.payload.totalTasks !== undefined) setTotalTasks(data.payload.totalTasks);
                 break;
               case 'state_update':
                 updateCurrentRunState(data.payload);
