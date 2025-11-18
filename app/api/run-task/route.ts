@@ -255,15 +255,14 @@ async function runTask(config: any, baseResultDir: string, onProgress: (data: ob
       if (isCancelled()) return;
       onProgress({ type: 'log', message: `[${taskType}] 第 ${loop}/${userCount} 轮...` });
 
-      const loopDir = join(baseResultDir, loop.toString());
-      await mkdir(loopDir, { recursive: true });
-      const logPath = join(loopDir, 'log.txt');
-      await ensureLogFileExists(logPath);
-
       for (let i = 0; i < contentArray.length; i++) {
         if (isCancelled()) return;
-
         currentTask++;
+        const loopDir = join(baseResultDir, currentTask.toString());
+        await mkdir(loopDir, { recursive: true });
+        const logPath = join(loopDir, 'log.txt');
+        await ensureLogFileExists(logPath);
+
         let sourceIdentifier = `${taskType}-${loop}-${i+1}`;
         // 构造用户指令和上下文
         let userMessage = '';
@@ -286,7 +285,6 @@ async function runTask(config: any, baseResultDir: string, onProgress: (data: ob
         }
 
         const finalUserMessage = userMessage;
-
         onProgress({ type: 'update', payload: { activeTaskMessage: `[${taskType}] ${i + 1}/${contentArray.length} (第${loop}轮)`, progress: (currentTask / totalTasks) * 100, currentTask: currentTask, totalTasks: totalTasks } });
 
         const workModelConfig = config.project.workModelParams || {};
@@ -316,18 +314,25 @@ async function runTask(config: any, baseResultDir: string, onProgress: (data: ob
 
         if (workResult.success && workResult.content) {
           try {
-            const jsonMatch = workResult.content.match(/```json\s*([\s\S]*?)\s*```/);
-            const jsonString = jsonMatch ? jsonMatch[1] : workResult.content;
-            const parsed = JSON.parse(jsonString);
-            generatedQuestion = parsed.question || "解析失败: 缺少question";
-            generatedAnswer = parsed.answer || "解析失败: 缺少answer";
+            const lines = workResult.content.split('\n');
+            const questionLine = lines.find(line => line.toLowerCase().startsWith('question:'));
+            const answerLine = lines.find(line => line.toLowerCase().startsWith('answer:'));
+            if (questionLine) {
+                generatedQuestion = questionLine.substring('question:'.length).trim();
+            }
+            if (answerLine) {
+                generatedAnswer = answerLine.substring('answer:'.length).trim();
+            }
+            // 如果上面两个都找不到，则将原始内容作为答案，方便调试
+            if (!questionLine && !answerLine) {
+                generatedAnswer = workResult.content;
+            }
           } catch (e) {
-            generatedQuestion = "解析JSON失败";
-            generatedAnswer = workResult.content;
+            generatedAnswer = workResult.error || "模型调用失败，无内容返回";
           }
         }
 
-        await appendToLogFile(logPath, `--- Model Answer ---\n${generatedAnswer}\n--- Stats ---\nToken Usage: ${workResult.tokenUsage?.total_tokens || 0} | Duration: ${workDurationUsage}ms\n\n`);
+        await appendToLogFile(logPath, `--- 模型回复 ---\n${generatedAnswer}\n--- Stats ---\nToken 消耗: ${workResult.tokenUsage?.total_tokens || 0} | 耗时统计: ${workDurationUsage}ms\n\n`);
         onProgress({ type: 'state_update', payload: { questionId: sourceIdentifier, questionText: generatedQuestion, modelAnswer: generatedAnswer } });
 
         const resultEntry = {
