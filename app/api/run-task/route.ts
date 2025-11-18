@@ -168,9 +168,10 @@ async function classifyAndCacheKnowledgeContent(onProgress: (data: object) => vo
   onProgress({ type: 'log', message: `开始扫描知识库目录: ${knowledgeDir}` });
 
   // 定义缓存数组
-  const qaPairs: string[] = [];
-  const chunks: string[] = [];
-  const documents: { name: string, content: string }[] = [];
+  const qaPairs: { tag: string; source: string; content: string }[] = [];
+  const chunks: { tag: string; source: string; content: string }[] = [];
+  const documents: { tag: string; source: string; content: string }[] = [];
+  const allTags = new Set<string>(); // 收集所有Tag标签
 
   try {
     const knowledgeFiles = await readdir(knowledgeDir);
@@ -180,22 +181,37 @@ async function classifyAndCacheKnowledgeContent(onProgress: (data: object) => vo
     const qaRegex = /(^Q:.*\s*\n^A:.*)/gm;
 
     for (const fileName of knowledgeFiles) {
-      const content = await readFile(join(knowledgeDir, fileName), 'utf-8');
-      const matches = content.match(qaRegex);
+      let content = await readFile(join(knowledgeDir, fileName), 'utf-8');
+      const firstLine = content.split('\n', 1)[0];
+      let tag = 'untagged'; // 默认值
+      if (firstLine.startsWith('#type:')) {
+        tag = firstLine.substring('#type:'.length).trim();
 
-      // 规则: 超过5个Q&A对，则判定为QA文件
+        const firstNewLineIndex = content.indexOf('\n');
+        if (firstNewLineIndex !== -1) {
+          content = content.substring(firstNewLineIndex + 1);
+        }
+      }
+      allTags.add(tag); // 添加到Set中，自动去重
+
+      const matches = content.match(qaRegex);
+      // 规则: 超过3个Q&A对，则判定为QA文件
       if (matches && matches.length > 3) {
         onProgress({ type: 'log', message: `文件 "${fileName}" 被分类为 [QA类型]` });
         // 按空行分割，并过滤掉无效的空块
         const pairs = content.split(/\n\s*\n/).filter(p => p.trim());
-        qaPairs.push(...pairs);
+        pairs.forEach(pairContent => {
+          qaPairs.push({ tag, source: fileName, content: pairContent });
+        });
       } else {
         onProgress({ type: 'log', message: `文件 "${fileName}" 被分类为 [文档类型]` });
         // 1. 缓存完整文档内容
-        documents.push({ name: fileName, content: content });
+        documents.push({ tag, source: fileName, content: content });
         // 2. 缓存按空行分割的文本块
         const contentChunks = content.split(/\n\s*\n/).filter(c => c.trim());
-        chunks.push(...contentChunks);
+        contentChunks.forEach(chunkContent => {
+          chunks.push({ tag, source: fileName, content: chunkContent });
+        });
       }
     }
   } catch (e: any) {
@@ -203,9 +219,41 @@ async function classifyAndCacheKnowledgeContent(onProgress: (data: object) => vo
     throw new Error(`无法读取知识库目录: ${knowledgeDir}。请确认文件已上传。错误: ${e.message}`);
   }
 
+  // 将所有唯一的Tag写入一个全局可访问的文件
+  try {
+    const tagsFilePath = join(process.cwd(), "output", "project", "tags.json");
+    await writeFile(tagsFilePath, JSON.stringify(Array.from(allTags), null, 2), 'utf-8');
+    onProgress({ type: 'log', message: `已将 ${allTags.size} 个TAG标签写入到 tags.json` });
+  } catch (e: any) {
+    onProgress({ type: 'log', message: `警告: 写入 tags.json 文件失败。错误: ${e.message}` });
+  }
+
   onProgress({ type: 'log', message: `内容缓存完成: QA对(${qaPairs.length}), 文本块(${chunks.length}), 文档(${documents.length})` });
 
   return { qaPairs, chunks, documents };
+}
+
+/**
+ * 查找一组字符串的最长公共前缀
+ * @param strs 字符串数组 (例如: ['local-spark-qa', 'local-spark-building'])
+ * @returns 最长公共前缀 (例如: 'local-spark-')
+ */
+function findLongestCommonPrefix(strs: string[]): string {
+  if (!strs || strs.length === 0) {
+    return "";
+  }
+  // 以第一个字符串作为基准
+  let prefix = strs[0];
+  for (let i = 1; i < strs.length; i++) {
+    // 不断缩短基准字符串，直到它成为当前字符串的前缀
+    while (strs[i].indexOf(prefix) !== 0) {
+      prefix = prefix.substring(0, prefix.length - 1);
+      if (prefix === "") {
+        return "";
+      }
+    }
+  }
+  return prefix;
 }
 
 // 主任务执行器
@@ -224,6 +272,11 @@ async function runTask(config: any, baseResultDir: string, onProgress: (data: ob
   }
   onProgress({ type: 'log', message: `任务总数计算完成: ${totalTasks} (QA:${qaTaskTotal}, 切块:${chunkTaskTotal}, 文档:${documentTaskTotal}, 综合:${comprehensiveTaskTotal})` });
   console.log(`任务总数: ${totalTasks} (QA:${qaTaskTotal}, 切块:${chunkTaskTotal}, 文档:${documentTaskTotal}, 综合:${comprehensiveTaskTotal})`);
+
+  const documentTags = documents.map(doc => doc.tag);
+  const commonPrefix = findLongestCommonPrefix(documentTags);
+  const comprehensiveTag = commonPrefix ? `${commonPrefix}Comprehensive` : 'Comprehensive';
+  console.log(`[INFO] 动态生成的 Comprehensive Tag 为: ${comprehensiveTag}`);
 
   let currentTask = 0;
   let totalTokenUsage = 0; // 累计token消耗
@@ -263,24 +316,18 @@ async function runTask(config: any, baseResultDir: string, onProgress: (data: ob
         const logPath = join(loopDir, 'log.txt');
         await ensureLogFileExists(logPath);
 
-        let sourceIdentifier = `${taskType}-${loop}-${i+1}`;
+        const item = contentArray[i];
         // 构造用户指令和上下文
         let userMessage = '';
         switch (taskType) {
           case 'QA':
-            userMessage = contentArray[i];
-            break;
           case 'Chunk':
-            userMessage = contentArray[i];
-            break;
           case 'Document':
-            sourceIdentifier = contentArray[i].name;
-            userMessage = contentArray[i].content;
+            userMessage = item.content;
             break;
           case 'Comprehensive':
             // 综合任务的上下文是所有文档的拼接
-            let comprehensiveContext = documents.map(d => `文件名: ${d.name}\n${d.content}`).join('\n\n---\n\n');
-            userMessage = comprehensiveContext;
+            userMessage = documents.map(d => `文件名: ${d.source}\n${d.content}`).join('\n\n---\n\n');
             break;
         }
 
@@ -333,11 +380,13 @@ async function runTask(config: any, baseResultDir: string, onProgress: (data: ob
         }
 
         await appendToLogFile(logPath, `--- 模型回复 ---\n${generatedAnswer}\n--- Stats ---\nToken 消耗: ${workResult.tokenUsage?.total_tokens || 0} | 耗时统计: ${workDurationUsage}ms\n\n`);
-        onProgress({ type: 'state_update', payload: { questionId: sourceIdentifier, questionText: generatedQuestion, modelAnswer: generatedAnswer } });
+        const sourceFile = taskType === 'Comprehensive' ? '综合文档' : item.source;
+        onProgress({ type: 'state_update', payload: { questionId: sourceFile, questionText: generatedQuestion, modelAnswer: generatedAnswer } });
 
         const resultEntry = {
           id: currentTask,
-          taskType,
+          tag: taskType === 'Comprehensive' ? comprehensiveTag : item.tag,
+          source: sourceFile,
           question: generatedQuestion,
           answer: generatedAnswer,
           score: 10
