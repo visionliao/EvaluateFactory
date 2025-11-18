@@ -171,8 +171,19 @@ async function runTask(config: any, baseResultDir: string, onProgress: (data: ob
   onProgress({ type: 'log', message: `正在加载项目背景资料...` })
 
   // 创建基础项目上下文
-  let baseProjectContext = `# 系统提示词\n${config.project.systemPrompt}\n\n`
-  // const knowledgeDir = join(process.cwd(), "output", "project", config.project.projectName, "knowledge")
+  let baseProjectContext = `# QA系统提示词\n${config.project.qaSystemPrompt || ''}\n\n`
+
+  // 如果有其他类型的系统提示词，也添加到上下文中
+  if (config.project.chunkSystemPrompt) {
+    baseProjectContext += `# 文本块系统提示词\n${config.project.chunkSystemPrompt}\n\n`
+  }
+  if (config.project.documentSystemPrompt) {
+    baseProjectContext += `# 文档系统提示词\n${config.project.documentSystemPrompt}\n\n`
+  }
+  if (config.project.comprehensiveSystemPrompt) {
+    baseProjectContext += `# 综合系统提示词\n${config.project.comprehensiveSystemPrompt}\n\n`
+  }
+  // const knowledgeDir = join(process.cwd(), "output", "project", "knowledge")
   // try {
   //   const knowledgeFiles = await readdir(knowledgeDir)
   //   for (const fileName of knowledgeFiles) {
@@ -218,15 +229,15 @@ async function runTask(config: any, baseResultDir: string, onProgress: (data: ob
       const workModelConfig = config.models.workParams || {};
       
       const workOptions: LlmGenerationOptions = {
-        stream: false,
+        stream: workModelConfig.streamingEnabled || false, // 使用用户配置的流式设置
         timeoutMs: 90000,
         maxOutputTokens: workModelConfig.maxTokens?.[0] || 8192,
         temperature: workModelConfig.temperature?.[0] || 1.0,
         topP: workModelConfig.topP?.[0] || 1.0,
         presencePenalty: workModelConfig.presencePenalty?.[0] || 0.0,
         frequencyPenalty: workModelConfig.frequencyPenalty?.[0] || 0.0, // 词汇丰富度,默认0，范围-2.0-2.0,值越大，用词越丰富多样；值越低，用词更朴实简单
-                systemPrompt: finalSystemPrompt, // 系统提示词
-                logPath: logPath,  // 传递日志输出路径
+        systemPrompt: finalSystemPrompt, // 系统提示词
+        logPath: logPath,  // 传递日志输出路径
       };
       const workMessages: ChatMessage[] = [
         {

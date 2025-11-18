@@ -2,13 +2,11 @@
 
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
-import { Switch } from "@/components/ui/switch"
 import { Slider } from "@/components/ui/slider"
-import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { useAppStore } from "@/store/app-store"
 import { useState, useEffect, useRef } from "react"
-import { AlertTriangle, Cog, FileText, Bot, HelpCircle } from "lucide-react"
+import { AlertTriangle, Bot, HelpCircle } from "lucide-react"
 
 export function RunResults() {
   const [showValidationDialog, setShowValidationDialog] = useState(false)
@@ -288,7 +286,7 @@ export function RunResults() {
             <div>
               <div className="font-medium text-foreground mb-1">项目概况</div>
               <div className="text-muted-foreground">
-                知识库文件: {(projectConfig.knowledgeBaseFiles || []).length} 个
+                元数据文件: {(projectConfig.knowledgeBaseFiles || []).length} 个
               </div>
             </div>
 

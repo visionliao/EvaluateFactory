@@ -58,7 +58,10 @@ interface AppState {
 
   // 项目概况状态
   projectConfig: {
-    systemPrompt: string
+    qaSystemPrompt: string
+    chunkSystemPrompt: string
+    documentSystemPrompt: string
+    comprehensiveSystemPrompt: string
     knowledgeBaseFiles: string[]
     knowledgeBaseFileData: any[]
     isDragging: boolean
@@ -102,7 +105,10 @@ interface AppState {
 
   // Project Actions
   updateProjectConfig: (config: Partial<AppState['projectConfig']>) => void
-  setSystemPrompt: (prompt: string) => void
+  setQaSystemPrompt: (prompt: string) => void
+  setChunkSystemPrompt: (prompt: string) => void
+  setDocumentSystemPrompt: (prompt: string) => void
+  setComprehensiveSystemPrompt: (prompt: string) => void
   setKnowledgeBaseFiles: (files: string[]) => void
   setKnowledgeBaseFileData: (fileData: any[]) => void
   setIsDragging: (dragging: boolean) => void
@@ -141,7 +147,7 @@ interface AppState {
 
 // 默认模型参数
 const defaultModelParams: ModelParams = {
-  streamingEnabled: true,
+  streamingEnabled: false,
   temperature: [1.0],
   topP: [1.0],
   presencePenalty: [0.0],
@@ -164,7 +170,10 @@ export const useAppStore = create<AppState>()(
 
       // 项目概况默认值
       projectConfig: {
-        systemPrompt: "",
+        qaSystemPrompt: "",
+        chunkSystemPrompt: "",
+        documentSystemPrompt: "",
+        comprehensiveSystemPrompt: "",
         knowledgeBaseFiles: [],
         knowledgeBaseFileData: [],
         isDragging: false,
@@ -206,14 +215,22 @@ export const useAppStore = create<AppState>()(
       setIsMobile: (mobile) => set({ isMobile: mobile }),
 
       // Project Actions
-      updateProjectConfig: (config) => 
-        set((state) => ({ 
-          projectConfig: { ...state.projectConfig, ...config } 
+      updateProjectConfig: (config) =>
+        set((state) => ({
+          projectConfig: { ...state.projectConfig, ...config }
         })),
 
+      setQaSystemPrompt: (prompt) =>
+        get().updateProjectConfig({ qaSystemPrompt: prompt }),
 
-      setSystemPrompt: (prompt) =>
-        get().updateProjectConfig({ systemPrompt: prompt }),
+      setChunkSystemPrompt: (prompt) =>
+        get().updateProjectConfig({ chunkSystemPrompt: prompt }),
+
+      setDocumentSystemPrompt: (prompt) =>
+        get().updateProjectConfig({ documentSystemPrompt: prompt }),
+
+      setComprehensiveSystemPrompt: (prompt) =>
+        get().updateProjectConfig({ comprehensiveSystemPrompt: prompt }),
 
       setKnowledgeBaseFiles: (files) => 
         get().updateProjectConfig({ knowledgeBaseFiles: files }),
@@ -340,7 +357,10 @@ export const useAppStore = create<AppState>()(
       // 只持久化必要的配置数据，不包含临时状态
       partialize: (state) => ({
         projectConfig: {
-          systemPrompt: state.projectConfig.systemPrompt,
+          qaSystemPrompt: state.projectConfig.qaSystemPrompt,
+          chunkSystemPrompt: state.projectConfig.chunkSystemPrompt,
+          documentSystemPrompt: state.projectConfig.documentSystemPrompt,
+          comprehensiveSystemPrompt: state.projectConfig.comprehensiveSystemPrompt,
           knowledgeBaseFiles: state.projectConfig.knowledgeBaseFiles,
           workModel: state.projectConfig.workModel,
           workModelParams: state.projectConfig.workModelParams,

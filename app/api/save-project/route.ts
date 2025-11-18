@@ -35,7 +35,15 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const { systemPrompt, knowledgeBaseFiles, workModel, workModelParams } = body
+    const {
+      qaSystemPrompt,
+      chunkSystemPrompt,
+      documentSystemPrompt,
+      comprehensiveSystemPrompt,
+      knowledgeBaseFiles,
+      workModel,
+      workModelParams
+    } = body
 
     // 创建项目输出目录
     const projectDir = join(process.cwd(), "output", "project")
@@ -128,8 +136,17 @@ export async function POST(request: Request) {
     // 生成项目文件内容
     const projectContent = `# 项目配置
 
-## 系统提示词
-${systemPrompt}
+## QA系统提示词
+${qaSystemPrompt || ''}
+
+## 文本块系统提示词
+${chunkSystemPrompt || ''}
+
+## 文档系统提示词
+${documentSystemPrompt || ''}
+
+## 综合系统提示词
+${comprehensiveSystemPrompt || ''}
 
 ## 知识库文件
 ${knowledgeBaseFiles.length > 0 ? knowledgeBaseFiles.map((file: string) => `- ${file}`).join('\n') : '无'}
@@ -141,7 +158,7 @@ ${workModel || '未设置'}
 ### 工作模型参数
 \`\`\`json
 ${workModelParams ? JSON.stringify(workModelParams, null, 2) : JSON.stringify({
-  streamingEnabled: true,
+  streamingEnabled: false,
   temperature: [1.0],
   topP: [1.0],
   presencePenalty: [0.0],

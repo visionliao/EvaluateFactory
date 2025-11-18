@@ -74,7 +74,10 @@ const AutoResizeTextarea = ({
 export function ProjectOverview() {
   const {
     projectConfig: {
-      systemPrompt,
+      qaSystemPrompt,
+      chunkSystemPrompt,
+      documentSystemPrompt,
+      comprehensiveSystemPrompt,
       knowledgeBaseFiles,
       knowledgeBaseFileData,
       isDragging,
@@ -89,7 +92,10 @@ export function ProjectOverview() {
       models,
       providers
     },
-    setSystemPrompt,
+    setQaSystemPrompt,
+    setChunkSystemPrompt,
+    setDocumentSystemPrompt,
+    setComprehensiveSystemPrompt,
     setKnowledgeBaseFiles,
     setKnowledgeBaseFileData,
     setIsDragging,
@@ -120,9 +126,23 @@ export function ProjectOverview() {
             let inJsonBlock = false
 
             const config = {
-              systemPrompt: "",
+              qaSystemPrompt: "",
+              chunkSystemPrompt: "",
+              documentSystemPrompt: "",
+              comprehensiveSystemPrompt: "",
               workModel: "",
-              workModelParams: null
+              workModelParams: {
+                streamingEnabled: false,
+                temperature: [1.0],
+                topP: [1.0],
+                presencePenalty: [0.0],
+                frequencyPenalty: [0.0],
+                singleResponseLimit: false,
+                maxTokens: [0],
+                maxTokensInput: "0",
+                intelligentAdjustment: false,
+                reasoningEffort: "中"
+              }
             }
 
             for (let i = 0; i < lines.length; i++) {
@@ -146,7 +166,7 @@ export function ProjectOverview() {
                     // If parsing fails, set default params
                     if (currentSection === "工作模型参数") {
                       config.workModelParams = {
-                        streamingEnabled: true,
+                        streamingEnabled: false,
                         temperature: [1.0],
                         topP: [1.0],
                         presencePenalty: [0.0],
@@ -173,9 +193,21 @@ export function ProjectOverview() {
                 continue
               }
 
-              if (currentSection === "系统提示词") {
+              if (currentSection === "QA系统提示词") {
                 if (line.trim() && !line.startsWith('#')) {
-                  config.systemPrompt += line + '\n'
+                  config.qaSystemPrompt += line + '\n'
+                }
+              } else if (currentSection === "文本块系统提示词") {
+                if (line.trim() && !line.startsWith('#')) {
+                  config.chunkSystemPrompt += line + '\n'
+                }
+              } else if (currentSection === "文档系统提示词") {
+                if (line.trim() && !line.startsWith('#')) {
+                  config.documentSystemPrompt += line + '\n'
+                }
+              } else if (currentSection === "综合系统提示词") {
+                if (line.trim() && !line.startsWith('#')) {
+                  config.comprehensiveSystemPrompt += line + '\n'
                 }
               } else if (currentSection === "工作模型配置") {
                 if (line.includes('### 工作模型') && !line.includes('### 工作模型参数')) {
@@ -192,11 +224,23 @@ export function ProjectOverview() {
               }
             }
 
-            config.systemPrompt = config.systemPrompt.trim()
+            config.qaSystemPrompt = config.qaSystemPrompt.trim()
+            config.chunkSystemPrompt = config.chunkSystemPrompt.trim()
+            config.documentSystemPrompt = config.documentSystemPrompt.trim()
+            config.comprehensiveSystemPrompt = config.comprehensiveSystemPrompt.trim()
 
             // 设置到store中
-            if (config.systemPrompt) {
-              setSystemPrompt(config.systemPrompt)
+            if (config.qaSystemPrompt) {
+              setQaSystemPrompt(config.qaSystemPrompt)
+            }
+            if (config.chunkSystemPrompt) {
+              setChunkSystemPrompt(config.chunkSystemPrompt)
+            }
+            if (config.documentSystemPrompt) {
+              setDocumentSystemPrompt(config.documentSystemPrompt)
+            }
+            if (config.comprehensiveSystemPrompt) {
+              setComprehensiveSystemPrompt(config.comprehensiveSystemPrompt)
             }
             if (config.workModel) {
               setWorkModel(config.workModel)
@@ -254,7 +298,7 @@ export function ProjectOverview() {
           // 同时设置默认的工作模型参数
           if (!workModelParams) {
             setWorkModelParams({
-              streamingEnabled: true,
+              streamingEnabled: false,
               temperature: [1.0],
               topP: [1.0],
               presencePenalty: [0.0],
@@ -295,8 +339,17 @@ export function ProjectOverview() {
     const validationErrors = []
 
 
-    if (!systemPrompt.trim()) {
-      validationErrors.push("系统提示词")
+    if (!qaSystemPrompt.trim()) {
+      validationErrors.push("QA系统提示词")
+    }
+    if (!chunkSystemPrompt.trim()) {
+      validationErrors.push("文本块系统提示词")
+    }
+    if (!documentSystemPrompt.trim()) {
+      validationErrors.push("文档系统提示词")
+    }
+    if (!comprehensiveSystemPrompt.trim()) {
+      validationErrors.push("综合系统提示词")
     }
 
     if (validationErrors.length > 0) {
@@ -354,7 +407,10 @@ export function ProjectOverview() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          systemPrompt: systemPrompt.trim(),
+          qaSystemPrompt: qaSystemPrompt.trim(),
+          chunkSystemPrompt: chunkSystemPrompt.trim(),
+          documentSystemPrompt: documentSystemPrompt.trim(),
+          comprehensiveSystemPrompt: comprehensiveSystemPrompt.trim(),
           knowledgeBaseFiles: knowledgeBaseFiles,
           fileData: knowledgeBaseFileData,
           workModel: workModel,
@@ -574,12 +630,46 @@ export function ProjectOverview() {
 
       <div className="space-y-6 md:space-y-8">
 
+        {/* QA系统提示词 */}
         <div className="space-y-2">
-          <Label className="text-lg font-medium text-foreground">系统提示词</Label>
+          <Label className="text-lg font-medium text-foreground">QA系统提示词</Label>
           <AutoResizeTextarea
-            value={systemPrompt}
-            onChange={(e) => setSystemPrompt(e.target.value)}
-            placeholder="请输入真实项目的系统提示词，模拟真实项目背景，以获得最真实的生成环境测试结果..."
+            value={qaSystemPrompt}
+            onChange={(e) => setQaSystemPrompt(e.target.value)}
+            placeholder="请输入QA问答系统的提示词，用于问答问题集的生成和评估..."
+            disabled={!isEditMode || isLoading}
+          />
+        </div>
+
+        {/* 文本块系统提示词 */}
+        <div className="space-y-2">
+          <Label className="text-lg font-medium text-foreground">文本块系统提示词</Label>
+          <AutoResizeTextarea
+            value={chunkSystemPrompt}
+            onChange={(e) => setChunkSystemPrompt(e.target.value)}
+            placeholder="请输入文本块处理系统的提示词，用于切块问题集的生成和评估..."
+            disabled={!isEditMode || isLoading}
+          />
+        </div>
+
+        {/* 文档系统提示词 */}
+        <div className="space-y-2">
+          <Label className="text-lg font-medium text-foreground">文档系统提示词</Label>
+          <AutoResizeTextarea
+            value={documentSystemPrompt}
+            onChange={(e) => setDocumentSystemPrompt(e.target.value)}
+            placeholder="请输入文档处理系统的提示词，用于文档问题集的生成和评估..."
+            disabled={!isEditMode || isLoading}
+          />
+        </div>
+
+        {/* 综合系统提示词 */}
+        <div className="space-y-2">
+          <Label className="text-lg font-medium text-foreground">综合系统提示词</Label>
+          <AutoResizeTextarea
+            value={comprehensiveSystemPrompt}
+            onChange={(e) => setComprehensiveSystemPrompt(e.target.value)}
+            placeholder="请输入综合评估系统的提示词，用于综合问题集的生成和评估..."
             disabled={!isEditMode || isLoading}
           />
         </div>
@@ -705,7 +795,7 @@ export function ProjectOverview() {
           {/* 工作模型参数设置 */}
           <ModelParams
             config={workModelParams || {
-              streamingEnabled: true,
+              streamingEnabled: false,
               temperature: [1.0],
               topP: [1.0],
               presencePenalty: [0.0],
@@ -754,7 +844,6 @@ export function ProjectOverview() {
           </Button>
         </div>
       </div>
-
-      </div>
+    </div>
   )
 }
