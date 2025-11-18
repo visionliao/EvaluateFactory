@@ -219,6 +219,14 @@ async function classifyAndCacheKnowledgeContent(onProgress: (data: object) => vo
     throw new Error(`无法读取知识库目录: ${knowledgeDir}。请确认文件已上传。错误: ${e.message}`);
   }
 
+  const documentTags = documents.map(doc => doc.tag);
+  const commonPrefix = findLongestCommonPrefix(documentTags);
+  const comprehensiveTag = commonPrefix ? `${commonPrefix}Comprehensive` : 'Comprehensive';
+  // 只有在有综合问题并且有文档时才添加这个tag
+  if (comprehensiveTag && documents.length > 0) {
+      allTags.add(comprehensiveTag);
+  }
+  console.log(`[INFO] 动态生成的 Comprehensive Tag 为: ${comprehensiveTag}`);
   // 将所有唯一的Tag写入一个全局可访问的文件
   try {
     const tagsFilePath = join(process.cwd(), "output", "project", "tags.json");
@@ -230,7 +238,7 @@ async function classifyAndCacheKnowledgeContent(onProgress: (data: object) => vo
 
   onProgress({ type: 'log', message: `内容缓存完成: QA对(${qaPairs.length}), 文本块(${chunks.length}), 文档(${documents.length})` });
 
-  return { qaPairs, chunks, documents };
+  return { qaPairs, chunks, documents, comprehensiveTag };
 }
 
 /**
@@ -259,7 +267,7 @@ function findLongestCommonPrefix(strs: string[]): string {
 // 主任务执行器
 async function runTask(config: any, baseResultDir: string, onProgress: (data: object) => void, isCancelled: () => boolean = () => false) {
   // 总任务数计算
-  const { qaPairs, chunks, documents } = await classifyAndCacheKnowledgeContent(onProgress);
+  const { qaPairs, chunks, documents, comprehensiveTag } = await classifyAndCacheKnowledgeContent(onProgress);
   const { qaCount, chunkCount, documentCount, comprehensiveCount } = config.testConfig;
   const qaTaskTotal = qaPairs.length * qaCount;
   const chunkTaskTotal = chunks.length * chunkCount;
@@ -272,11 +280,6 @@ async function runTask(config: any, baseResultDir: string, onProgress: (data: ob
   }
   onProgress({ type: 'log', message: `任务总数计算完成: ${totalTasks} (QA:${qaTaskTotal}, 切块:${chunkTaskTotal}, 文档:${documentTaskTotal}, 综合:${comprehensiveTaskTotal})` });
   console.log(`任务总数: ${totalTasks} (QA:${qaTaskTotal}, 切块:${chunkTaskTotal}, 文档:${documentTaskTotal}, 综合:${comprehensiveTaskTotal})`);
-
-  const documentTags = documents.map(doc => doc.tag);
-  const commonPrefix = findLongestCommonPrefix(documentTags);
-  const comprehensiveTag = commonPrefix ? `${commonPrefix}Comprehensive` : 'Comprehensive';
-  console.log(`[INFO] 动态生成的 Comprehensive Tag 为: ${comprehensiveTag}`);
 
   let currentTask = 0;
   let totalTokenUsage = 0; // 累计token消耗
@@ -417,6 +420,6 @@ async function runTask(config: any, baseResultDir: string, onProgress: (data: ob
   if (isCancelled()) return;
   await executeGenerationTask('Document', config.project.documentSystemPrompt, documents, documentCount);
   if (isCancelled()) return;
-  const comprehensiveDummyContent = Array(comprehensiveCount).fill("N/A");
+  const comprehensiveDummyContent = Array(comprehensiveCount).fill({});
   await executeGenerationTask('Comprehensive', config.project.comprehensiveSystemPrompt, comprehensiveDummyContent, 1);
 }
