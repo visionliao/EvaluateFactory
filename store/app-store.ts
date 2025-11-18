@@ -83,7 +83,7 @@ interface AppState {
   // 运行结果状态
   runResultsConfig: {
     runStatus: RunStatus
-    testLoopCount: number
+    qaQuestionCount: number
     chunkQuestionCount: number
     documentQuestionCount: number
     comprehensiveQuestionCount: number
@@ -130,7 +130,7 @@ interface AppState {
   startRun: () => void
   stopRun: () => void
   setRunError: (error: string) => void
-  setTestLoopCount: (count: number) => void
+  setQaQuestionCount: (count: number) => void
   setChunkQuestionCount: (count: number) => void
   setDocumentQuestionCount: (count: number) => void
   setComprehensiveQuestionCount: (count: number) => void
@@ -196,7 +196,7 @@ export const useAppStore = create<AppState>()(
         runStatus: {
           isRunning: false
         },
-        testLoopCount: 3,
+        qaQuestionCount: 3,
         chunkQuestionCount: 3,
         documentQuestionCount: 5,
         comprehensiveQuestionCount: 30,
@@ -304,8 +304,8 @@ export const useAppStore = create<AppState>()(
           runStatus: { ...get().runResultsConfig.runStatus, error, isRunning: false } 
         }),
 
-      setTestLoopCount: (count) =>
-        get().updateRunResultsConfig({ testLoopCount: count }),
+      setQaQuestionCount: (count) =>
+        get().updateRunResultsConfig({ qaQuestionCount: count }),
 
       setChunkQuestionCount: (count) =>
         get().updateRunResultsConfig({ chunkQuestionCount: count }),
@@ -366,7 +366,7 @@ export const useAppStore = create<AppState>()(
           workModelParams: state.projectConfig.workModelParams,
         },
         runResultsConfig: {
-          testLoopCount: state.runResultsConfig.testLoopCount,
+          qaQuestionCount: state.runResultsConfig.qaQuestionCount,
           chunkQuestionCount: state.runResultsConfig.chunkQuestionCount,
           documentQuestionCount: state.runResultsConfig.documentQuestionCount,
           comprehensiveQuestionCount: state.runResultsConfig.comprehensiveQuestionCount
@@ -377,7 +377,7 @@ export const useAppStore = create<AppState>()(
         console.log('Rehydrating state with:', state);
         if (state && state.runResultsConfig) {
           // 强制设置正确的默认值，覆盖localStorage中的旧值
-          state.runResultsConfig.testLoopCount = 3;
+          state.runResultsConfig.qaQuestionCount = 3;
           state.runResultsConfig.chunkQuestionCount = 3;
           state.runResultsConfig.documentQuestionCount = 5;
           state.runResultsConfig.comprehensiveQuestionCount = 30;
@@ -395,7 +395,7 @@ export const useAppStore = create<AppState>()(
             ...persistedState,
             runResultsConfig: {
               ...persistedState?.runResultsConfig,
-              testLoopCount: 3,
+              qaQuestionCount: 3,
               chunkQuestionCount: 3,
               documentQuestionCount: 5,
               comprehensiveQuestionCount: 30

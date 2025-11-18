@@ -36,7 +36,7 @@ export function RunResults() {
   const {
     runResultsConfig: {
       runStatus,
-      testLoopCount,
+      qaQuestionCount,
       chunkQuestionCount,
       documentQuestionCount,
       comprehensiveQuestionCount,
@@ -51,12 +51,11 @@ export function RunResults() {
       currentRunState
     },
     projectConfig,
-    modelSettingsConfig,
     startRun,
     stopRun,
     setRunError,
     setActiveTaskMessage,
-    setTestLoopCount,
+    setQaQuestionCount,
     setChunkQuestionCount,
     setDocumentQuestionCount,
     setComprehensiveQuestionCount,
@@ -93,7 +92,7 @@ export function RunResults() {
   // 计算总任务数
   const calculateTotalTasks = () => {
     // 总任务数 = 所有类型问题集的数量之和
-    return testLoopCount + chunkQuestionCount + documentQuestionCount + comprehensiveQuestionCount;
+    return qaQuestionCount + chunkQuestionCount + documentQuestionCount + comprehensiveQuestionCount;
   }
 
   // 验证运行条件
@@ -173,7 +172,7 @@ export function RunResults() {
         workParams: projectConfig.workModelParams
       },
       testConfig: {
-        qaCount: testLoopCount,
+        qaCount: qaQuestionCount,
         chunkCount: chunkQuestionCount,
         documentCount: documentQuestionCount,
         comprehensiveCount: comprehensiveQuestionCount,
@@ -314,15 +313,15 @@ export function RunResults() {
               </div>
               <div className="flex items-center gap-4">
                 <Slider
-                  value={[testLoopCount]}
-                  onValueChange={(value) => setTestLoopCount(value[0])}
+                  value={[qaQuestionCount]}
+                  onValueChange={(value) => setQaQuestionCount(value[0])}
                   max={10}
                   min={1}
                   step={1}
                   className="w-48 md:w-64"
                 />
                 <span className="text-sm font-medium text-foreground min-w-[2rem] text-center">
-                  {testLoopCount}
+                  {qaQuestionCount}
                 </span>
               </div>
             </div>
