@@ -26,10 +26,17 @@ export function TestQuestions() {
   const [selectedTimestamp, setSelectedTimestamp] = useState<string>("")
   const [useResultsFile, setUseResultsFile] = useState(false)
 
+  // 标签层级相关状态
+  const [tagLevels, setTagLevels] = useState<string[][]>([])
+  const [maxLevel, setMaxLevel] = useState(0)
+
   const [editingId, setEditingId] = useState<number | null>(null)
   const [editQuestion, setEditQuestion] = useState("")
   const [editAnswer, setEditAnswer] = useState("")
   const [editScore, setEditScore] = useState(10)
+
+  // 编辑模式下的标签选择状态
+  const [editTagValues, setEditTagValues] = useState<string[]>([])
 
   const [isAdding, setIsAdding] = useState(false)
   const [newQuestion, setNewQuestion] = useState("")
@@ -38,10 +45,24 @@ export function TestQuestions() {
   const [saving, setSaving] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<number | null>(null)
 
+  // 新增模式下的标签选择状态
+  const [newTagValues, setNewTagValues] = useState<string[]>([])
+
+  // 解析标签为数组
+  const parseTagToArray = (tag: string): string[] => {
+    return tag ? tag.split('-') : []
+  }
+
+  // 从标签数组构建标签字符串
+  const buildTagFromString = (tagArray: string[]): string => {
+    return tagArray.filter(part => part).join('-')
+  }
+
   // 修改编辑函数，支持results文件编辑
   const handleSaveEdit = async (id: number) => {
     setSaving(true)
     try {
+      const newTag = buildTagFromString(editTagValues)
       const response = await fetch('/api/test-cases', {
         method: 'POST',
         headers: {
@@ -53,6 +74,7 @@ export function TestQuestions() {
           question: editQuestion,
           answer: editAnswer,
           score: editScore,
+          tag: newTag,
           timestamp: selectedTimestamp // 传递当前选择的时间戳
         }),
       })
@@ -64,6 +86,7 @@ export function TestQuestions() {
         setEditQuestion("")
         setEditAnswer("")
         setEditScore(10)
+        setEditTagValues([])
       } else {
         alert('保存失败')
       }
@@ -111,6 +134,7 @@ export function TestQuestions() {
     if (newQuestion.trim() && newAnswer.trim()) {
       setSaving(true)
       try {
+        const newTag = buildTagFromString(newTagValues)
         const response = await fetch('/api/test-cases', {
           method: 'POST',
           headers: {
@@ -121,6 +145,8 @@ export function TestQuestions() {
             question: newQuestion,
             answer: newAnswer,
             score: newScore,
+            tag: newTag,
+            source: '用户自定义',
             timestamp: selectedTimestamp // 传递当前选择的时间戳
           }),
         })
@@ -131,6 +157,7 @@ export function TestQuestions() {
           setNewQuestion("")
           setNewAnswer("")
           setNewScore(10)
+          setNewTagValues([])
           setIsAdding(false)
         } else {
           alert('添加失败')
@@ -143,6 +170,24 @@ export function TestQuestions() {
       }
     }
   }
+
+  // 加载标签层级信息
+  useEffect(() => {
+    const loadTags = async () => {
+      try {
+        const response = await fetch("/api/test-cases?tags=true")
+        if (response.ok) {
+          const data = await response.json()
+          setTagLevels(data.levels || [])
+          setMaxLevel(data.maxLevel || 0)
+        }
+      } catch (error) {
+        console.error("Failed to load tags:", error)
+      }
+    }
+
+    loadTags()
+  }, [])
 
   // 加载时间戳列表
   useEffect(() => {
@@ -211,6 +256,14 @@ export function TestQuestions() {
     setEditAnswer(question.answer)
     setEditScore(question.score)
 
+    // 初始化标签值
+    const tagArray = parseTagToArray(question.tag || "")
+    const paddedTagArray = [...tagArray]
+    while (paddedTagArray.length < maxLevel) {
+      paddedTagArray.push("")
+    }
+    setEditTagValues(paddedTagArray)
+
     // 延迟调整高度，确保 DOM 更新后执行
     setTimeout(() => {
       const editQuestionElement = document.querySelector(`textarea[placeholder="请输入问题..."]`) as HTMLTextAreaElement
@@ -232,6 +285,7 @@ export function TestQuestions() {
     setEditQuestion("")
     setEditAnswer("")
     setEditScore(10)
+    setEditTagValues([])
   }
 
   const handleDelete = async (id: number) => {
@@ -246,6 +300,7 @@ export function TestQuestions() {
     setNewQuestion("")
     setNewAnswer("")
     setNewScore(10)
+    setNewTagValues([])
     setIsAdding(false)
   }
 
@@ -352,6 +407,35 @@ export function TestQuestions() {
                     }}
                   />
                 </div>
+
+                {/* 标签层级选择器 */}
+                {maxLevel > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {Array.from({ length: maxLevel }).map((_, levelIndex) => (
+                      <Select
+                        key={levelIndex}
+                        value={editTagValues[levelIndex] || ""}
+                        onValueChange={(value) => {
+                          const newValues = [...editTagValues]
+                          newValues[levelIndex] = value
+                          setEditTagValues(newValues)
+                        }}
+                      >
+                        <SelectTrigger className="w-32 h-8 text-xs">
+                          <SelectValue placeholder={`层级${levelIndex + 1}`} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(tagLevels[levelIndex] || []).map((option) => (
+                            <SelectItem key={option} value={option}>
+                              {option}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ))}
+                  </div>
+                )}
+
                 <div className="flex justify-end gap-2">
                   <Button
                     variant="ghost"
@@ -460,6 +544,35 @@ export function TestQuestions() {
                 }}
               />
             </div>
+
+            {/* 标签层级选择器 */}
+            {maxLevel > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {Array.from({ length: maxLevel }).map((_, levelIndex) => (
+                  <Select
+                    key={levelIndex}
+                    value={newTagValues[levelIndex] || ""}
+                    onValueChange={(value) => {
+                      const newValues = [...newTagValues]
+                      newValues[levelIndex] = value
+                      setNewTagValues(newValues)
+                    }}
+                  >
+                    <SelectTrigger className="w-32 h-8 text-xs">
+                      <SelectValue placeholder={`层级${levelIndex + 1}`} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(tagLevels[levelIndex] || []).map((option) => (
+                        <SelectItem key={option} value={option}>
+                          {option}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ))}
+              </div>
+            )}
+
             <div className="flex justify-end gap-2">
               <Button
                 variant="ghost"
@@ -486,7 +599,12 @@ export function TestQuestions() {
 
         {!isAdding && (
           <div className="flex justify-end pt-2">
-            <Button onClick={() => setIsAdding(true)} variant="outline" className="border-border hover:bg-secondary">
+            <Button onClick={() => {
+              setIsAdding(true)
+              // 初始化新增模式下的标签值，默认选择每层级的第一个选项
+              const defaultTagValues = tagLevels.map(level => level.length > 0 ? level[0] : "")
+              setNewTagValues(defaultTagValues)
+            }} variant="outline" className="border-border hover:bg-secondary">
               新增问题
             </Button>
           </div>

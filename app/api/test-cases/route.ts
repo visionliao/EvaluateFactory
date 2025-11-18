@@ -4,13 +4,48 @@ import path from 'path'
 
 const TEST_CASES_PATH = path.join(process.cwd(), 'template', 'questions', 'test_cases.json')
 const RESULT_DIR = path.join(process.cwd(), 'output', 'result')
+const TAGS_PATH = path.join(process.cwd(), 'output', 'project', 'tags.json')
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const timestamp = searchParams.get('timestamp')
+    const tags = searchParams.get('tags')
 
-    if (timestamp) {
+    if (tags === 'true') {
+      // 返回tags.json内容
+      try {
+        const data = await fs.readFile(TAGS_PATH, 'utf-8')
+        const tagsData = JSON.parse(data)
+
+        // 处理标签层级，获取每层级的所有可能选项
+        const levelMap = new Map<number, Set<string>>()
+
+        tagsData.forEach((tag: string) => {
+          const parts = tag.split('-')
+          parts.forEach((part, index) => {
+            if (!levelMap.has(index)) {
+              levelMap.set(index, new Set())
+            }
+            levelMap.get(index)!.add(part)
+          })
+        })
+
+        // 转换为数组格式
+        const levels = Array.from(levelMap.entries())
+          .sort(([a], [b]) => a - b) // 按层级索引排序
+          .map(([_, options]) => Array.from(options))
+
+        return NextResponse.json({
+          levels,
+          maxLevel: levels.length,
+          tags: tagsData
+        })
+      } catch (error) {
+        console.error('Error reading tags:', error)
+        return NextResponse.json({ levels: [], maxLevel: 0, tags: [] })
+      }
+    } else if (timestamp) {
       // 返回指定时间戳的results.json内容
       const resultsPath = path.join(RESULT_DIR, timestamp, 'results.json')
       try {
@@ -47,7 +82,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const data = await request.json()
-    const { action, id, question, answer, score, timestamp } = data
+    const { action, id, question, answer, score, timestamp, tag, source } = data
 
     let filePath: string
     let isResultFile = false
@@ -80,6 +115,8 @@ export async function POST(request: NextRequest) {
       case 'add':
         newQuestion = {
           id: Math.max(...questionsData.map((c: any) => c.id), 0) + 1,
+          ...(tag && { tag }),
+          ...(source && { source }),
           question,
           answer,
           score: score || 10
@@ -88,9 +125,26 @@ export async function POST(request: NextRequest) {
         break
 
       case 'edit':
-        questionsData = questionsData.map((q: any) =>
-          q.id === id ? { ...q, question, answer, score: score || 10 } : q
-        )
+        questionsData = questionsData.map((q: any) => {
+          if (q.id === id) {
+            const updatedQuestion = { ...q }
+            // Update all fields
+            updatedQuestion.question = question
+            updatedQuestion.answer = answer
+            updatedQuestion.score = score || 10
+            if (tag) updatedQuestion.tag = tag
+            // Reorder fields to match desired structure
+            return {
+              id: updatedQuestion.id,
+              ...(updatedQuestion.tag && { tag: updatedQuestion.tag }),
+              ...(updatedQuestion.source && { source: updatedQuestion.source }),
+              question: updatedQuestion.question,
+              answer: updatedQuestion.answer,
+              score: updatedQuestion.score
+            }
+          }
+          return q
+        })
         break
 
       case 'delete':
