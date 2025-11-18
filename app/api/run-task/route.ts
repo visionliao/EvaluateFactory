@@ -327,7 +327,22 @@ async function runTask(config: any, baseResultDir: string, onProgress: (data: ob
             break;
           case 'Comprehensive':
             // 综合任务的上下文是所有文档的拼接
-            userMessage = documents.map(d => `文件名: ${d.source}\n${d.content}`).join('\n\n---\n\n');
+            let fullComprehensiveContext = documents.map(d => `文件名: ${d.source}\n${d.content}`).join('\n\n---\n\n');
+            const MAX_CHARS = 30000; // 防止超出上下文窗口最大限度，只随机截取30000个字符长度的内容
+            if (fullComprehensiveContext.length > MAX_CHARS) {
+              // 计算可以开始截取的最大随机位置
+              const maxStartIndex = fullComprehensiveContext.length - MAX_CHARS;
+              // 生成一个从 0 到 maxStartIndex 的随机整数
+              const startIndex = Math.floor(Math.random() * (maxStartIndex + 1));
+
+              // 从随机位置开始截取30000个字符
+              userMessage = fullComprehensiveContext.substring(startIndex, startIndex + MAX_CHARS);
+
+              console.log(`[INFO] Comprehensive context was truncated. Original length: ${fullComprehensiveContext.length}, New length: ${userMessage.length}, Start index: ${startIndex}`);
+            } else {
+              // 如果没超过，则使用完整内容
+              userMessage = fullComprehensiveContext;
+            }
             break;
         }
 
