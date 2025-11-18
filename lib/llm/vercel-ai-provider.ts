@@ -171,7 +171,10 @@ export class VercelAIProvider {
       console.log('发送给大模型的消息：', generateOptions.messages)
       if (this.logPath) {
         const sendMessages = JSON.stringify(generateOptions.messages, null, 2);
-        await appendToLogFile(this.logPath, `--- 发送给大模型的消息 ---\n${sendMessages}\n\n`);
+        const messageForLog = sendMessages.length > 200
+                ? sendMessages.slice(0, 300) + '...'
+                : sendMessages;
+        await appendToLogFile(this.logPath, `--- 发送给大模型的消息 ---\n${messageForLog}\n\n`);
       }
       // console.log('参数配置信息:', JSON.stringify(generateOptions, null, 2));
       console.log('-----------------------------------------\n');

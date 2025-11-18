@@ -184,7 +184,7 @@ async function classifyAndCacheKnowledgeContent(onProgress: (data: object) => vo
       const matches = content.match(qaRegex);
 
       // 规则: 超过5个Q&A对，则判定为QA文件
-      if (matches && matches.length > 5) {
+      if (matches && matches.length > 3) {
         onProgress({ type: 'log', message: `文件 "${fileName}" 被分类为 [QA类型]` });
         // 按空行分割，并过滤掉无效的空块
         const pairs = content.split(/\n\s*\n/).filter(p => p.trim());
