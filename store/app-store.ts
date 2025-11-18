@@ -376,11 +376,19 @@ export const useAppStore = create<AppState>()(
       onRehydrateStorage: () => (state) => {
         console.log('Rehydrating state with:', state);
         if (state && state.runResultsConfig) {
-          // 强制设置正确的默认值，覆盖localStorage中的旧值
-          state.runResultsConfig.qaQuestionCount = 3;
-          state.runResultsConfig.chunkQuestionCount = 3;
-          state.runResultsConfig.documentQuestionCount = 5;
-          state.runResultsConfig.comprehensiveQuestionCount = 30;
+          // 确保字段存在，但不覆盖用户已保存的值
+          if (state.runResultsConfig.qaQuestionCount === undefined) {
+            state.runResultsConfig.qaQuestionCount = 3;
+          }
+          if (state.runResultsConfig.chunkQuestionCount === undefined) {
+            state.runResultsConfig.chunkQuestionCount = 3;
+          }
+          if (state.runResultsConfig.documentQuestionCount === undefined) {
+            state.runResultsConfig.documentQuestionCount = 5;
+          }
+          if (state.runResultsConfig.comprehensiveQuestionCount === undefined) {
+            state.runResultsConfig.comprehensiveQuestionCount = 30;
+          }
           console.log('Final state after rehydration:', state.runResultsConfig);
         }
       },
